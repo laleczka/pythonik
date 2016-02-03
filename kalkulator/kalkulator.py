@@ -58,6 +58,11 @@ def tokenize(text):
             tokens.append(a.group())
             text = text[len(a.group()):]
             continue
+        d = re.match('^=:', text)
+        if d:
+            tokens.append(d.group())
+            text = text[len(d.group()):]
+            continue
         if text[0] in ['=', '{', '}', 'u', 'n', '\\', 'x', '(', ')']:
             tokens.append(text[0])
             text = text[1:]
@@ -82,67 +87,55 @@ operations = {
     'x': CartesianProduct
     }
 
-def parse_expression(tokens):
-    name = tokens[0]
-    if tokens[1] != '=':
-        raise Exception('Zle wyrazenie')
-    stack = []
-    for i in tokens[2:]:
-        if i in ['{', 'u', 'n', '\\', 'x', '(']:
-            stack.append(i)
-        elif re.match('^[0-9]+$',i):
-            if stack and stack[-1] in operations:
-                op = stack.pop()
-                if not stack:
-                    raise Exception('Zle wyrazenie1')
-                stack.append(operations[op](stack.pop(), Constant(i)))
-            else:
-                stack.append(Constant(i))
+class Parser(object):
+    def __init__(self):
+        self._stack = []
 
-        elif re.match('^[A-Z]+$',i):
-            if stack and stack[-1] in operations:
-                op = stack.pop()
-                if not stack:
-                    raise Exception('Zle wyrazenie1')
-                stack.append(operations[op](stack.pop(), Variable(i)))
-            else:
-                stack.append(Variable(i))
-        elif i == '}':
-            values = []
-            while stack and stack[-1] != '{':
-                values.append(stack.pop())
-            if stack:
-                stack.pop()
-                set_a = Set(values[::-1])
-                if stack and stack[-1] in operations:
-                    op = stack.pop()
-                    if not stack:
-                        raise Exception('Zle wyrazenie2')
-                    stack.append(operations[op](stack.pop(), set_a))
-                else:
-                    stack.append(set_a)        
-            else:
-                raise Exception('Zle wyrazenie3')
-        elif i == ')':
-            if len(stack)>1 and stack[-2] == '(':
-                a = stack.pop()
-                stack.pop()
-                if stack and stack[-1] in operations:
-                    op = stack.pop()
-                    if not stack:
-                        raise Exception('Zle wyrazenie7')
-                    stack.append(operations[op](stack.pop(), a))
-                else:
-                    stack.append(a)
-            else:
-                raise Exception('Zle wyrazenie8')
+    def try_parse_operation(self, expression):
+        if self._stack and self._stack[-1] in operations:
+            op = self._stack.pop()
+            if not self._stack:
+                raise Exception('Zle wyrazenie1')
+            self._stack.append(operations[op](self._stack.pop(), expression))
         else:
-            raise Exception('Zle wyrazenie9')
-                
-    if len(stack) != 1:
-        print stack
-        raise Exception('Zle wyrazenie4')
-    return name, stack[0]
+            self._stack.append(expression)
+
+    def parse_expression(self, tokens):
+        name = tokens[0]
+        if tokens[1] not in ['=', '=:']:
+            raise Exception('Zle wyrazenie')
+        self._stack = []
+        for i in tokens[2:]:
+            if i in ['{', 'u', 'n', '\\', 'x', '(']:
+                self._stack.append(i)
+            elif re.match('^[0-9]+$',i):
+                self.try_parse_operation(Constant(i))
+            elif re.match('^[A-Z]+$',i):
+                self.try_parse_operation(Variable(i))
+            elif i == '}':
+                values = []
+                while self._stack and self._stack[-1] != '{':
+                    values.append(self._stack.pop())
+                if self._stack:
+                    self._stack.pop()
+                    set_a = Set(values[::-1])
+                    self.try_parse_operation(set_a)
+                else:
+                    raise Exception('Zle wyrazenie3')
+            elif i == ')':
+                if len(self._stack)>1 and self._stack[-2] == '(':
+                    a = self._stack.pop()
+                    self._stack.pop()
+                    self.try_parse_operation(a)
+                else:
+                    raise Exception('Zle wyrazenie8')
+            else:
+                raise Exception('Zle wyrazenie9')
+                    
+        if len(self._stack) != 1:
+            print self._stack
+            raise Exception('Zle wyrazenie4')
+        return name, self._stack[0]
  
 def read_string(text):
     if re.match(r'^\$ [A-Z]+$', text):
@@ -151,15 +144,20 @@ def read_string(text):
         print 'To jest przypisanie bez odroczenia'
         try:
             tokens = tokenize(text)
-            print parse_expression(tokens)
+            parser = Parser()
+            print parser.parse_expression(tokens)
         except Exception, e:
             print str(e)
     elif re.match(r'^[A-Z]+ =: [\\{}()A-Zunx 0-9]*', text):
         print 'To jest przypisanie z odroczeniem'
+        try:
+            tokens = tokenize(text)
+            parser = Parser()
+            print parser.parse_expression(tokens)
+        except Exception, e:
+            print str(e)
     else:
         print 'To jest nieprawid³owe wyra¿enie'
-   # for i in text:
-     #   print i
 
 while True:
     a = raw_input()
